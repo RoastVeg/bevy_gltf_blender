@@ -12,8 +12,15 @@ pub enum AppState {
 pub struct Scene(Handle<Gltf>);
 
 // Startup: Load assets/Scene.glb as a resource
+#[cfg(not(feature = "embed-assets"))]
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.insert_resource(Scene(asset_server.load("Scene.glb")))
+}
+
+// Startup: Load Scene.glb as an embedded resource
+#[cfg(feature = "embed-assets")]
+fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.insert_resource(Scene(asset_server.load("embedded://Scene.glb")))
 }
 
 // Update/Loading: Fetch the first scene out of the asset
@@ -64,11 +71,7 @@ fn mesh_hook(
                     for collider in children
                         .iter()
                         // Filter out everything that isn't a mesh (materials, etc.)
-                        .filter_map(|entity| {
-                            mesh_handles
-                                .get(*entity)
-                                .ok()
-                        })
+                        .filter_map(|entity| mesh_handles.get(*entity).ok())
                         // Convert the mesh into a rapier collider, silently ignoring bad meshes
                         .filter_map(|mesh_handle| {
                             Collider::from_bevy_mesh(
@@ -96,8 +99,8 @@ fn mesh_hook(
                         // Add a rapier RigidBody to the ECS
                         let rigid_body = commands
                             .spawn(RigidBody::Dynamic)
-                        // Without this component, the rapier physics won't be applied to child entities
-                        // Bevy warns us about this: https://bevyengine.org/learn/errors/#b0004
+                            // Without this component, the rapier physics won't be applied to child entities
+                            // Bevy warns us about this: https://bevyengine.org/learn/errors/#b0004
                             .insert(SpatialBundle::default())
                             .id();
                         // Reparent the Cube to the RigidBody, and add the collider to it
@@ -114,15 +117,20 @@ fn mesh_hook(
 }
 
 fn main() {
-    App::new()
-        // Everything needed for rendering, windowing, etc.
-        .add_plugins(DefaultPlugins)
+    let mut app = App::new();
+
+    // Everything needed for rendering, windowing, etc.
+    app.add_plugins(DefaultPlugins)
         // The Rapier 3D physics simulation
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
         // Gives us a view into the Rapier colliders as wireframes
         .add_plugins(RapierDebugRenderPlugin::default())
         .add_state::<AppState>()
         .add_systems(Startup, setup)
-        .add_systems(Update, (spawn_level, mesh_hook))
-        .run()
+        .add_systems(Update, (spawn_level, mesh_hook));
+
+    #[cfg(feature = "embed-assets")]
+    app.add_plugins(bevy_embedded_assets::EmbeddedAssetPlugin::default());
+
+    app.run()
 }
